@@ -111,7 +111,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/BatchResponse'
+                  $ref: '#/components/schemas/BatchItem'
       requestBody:
         content:
           application/json:
@@ -1232,7 +1232,7 @@ components:
         body:
           description: The request body for the API call.
 
-    BatchResponse:
+    BatchItem:
       type: object
       properties:
         path:

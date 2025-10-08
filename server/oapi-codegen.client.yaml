@@ -1,0 +1,8 @@
+package: oapi
+output: lib/oapi/client.go
+generate:
+  client: true
+  models: true
+  embedded-spec: false
+output-options:
+  skip-prune: true
