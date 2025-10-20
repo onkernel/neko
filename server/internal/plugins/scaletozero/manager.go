@@ -25,43 +25,30 @@ func NewManager(
 }
 
 type Manager struct {
-	logger   zerolog.Logger
-	config   *Config
-	sessions types.SessionManager
-	ctrl     scaletozero.Controller
-	mu       sync.Mutex
-	shutdown bool
-	pending  int
+	logger              zerolog.Logger
+	config              *Config
+	sessions            types.SessionManager
+	ctrl                scaletozero.Controller
+	mu                  sync.Mutex
+	shutdown            bool
+	disabledScaleToZero bool
 }
 
 func (m *Manager) Start() error {
 	if !m.config.Enabled {
 		return nil
 	}
-	m.logger.Info().Msg("scale-to-zero plugin enabled")
+	m.logger.Info().Msg("plugin enabled")
+
+	// compute initial state and toggle if needed
+	m.manage()
 
 	m.sessions.OnConnected(func(session types.Session) {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.shutdown {
-			return
-		}
-
-		m.pending++
-		m.logger.Info().Msgf("connection started, disabling scale-to-zero (pending: %d)", m.pending)
-		m.ctrl.Disable(context.Background())
+		m.manage()
 	})
 
 	m.sessions.OnDisconnected(func(session types.Session) {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		if m.shutdown {
-			return
-		}
-
-		m.pending--
-		m.logger.Info().Msgf("connection started, disabling scale-to-zero (pending: %d)", m.pending)
-		m.ctrl.Enable(context.Background())
+		m.manage()
 	})
 
 	return nil
@@ -72,10 +59,51 @@ func (m *Manager) Shutdown() error {
 	defer m.mu.Unlock()
 	m.shutdown = true
 
-	m.logger.Info().Msgf("shutdown started, re-enabling scale-to-zero (pending: %d)", m.pending)
-	for i := 0; i < m.pending; i++ {
-		m.ctrl.Enable(context.Background())
+	if m.disabledScaleToZero {
+		return m.ctrl.Enable(context.Background())
 	}
 
 	return nil
+}
+
+func (m *Manager) manage() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.shutdown {
+		return
+	}
+
+	connectedSessions := 0
+	for _, s := range m.sessions.List() {
+		if s.State().IsConnected {
+			connectedSessions++
+		}
+	}
+	hasConnectedSessions := connectedSessions > 0
+
+	if hasConnectedSessions == m.disabledScaleToZero {
+		m.logger.Info().Bool("previously_disabled", m.disabledScaleToZero).
+			Bool("currently_disabled", hasConnectedSessions).
+			Int("currently_connected_sessions", connectedSessions).
+			Msg("no operation needed; skipping toggle")
+		return
+	}
+
+	// toggle if needed but only update internal state if successful
+	if hasConnectedSessions {
+		m.logger.Info().Int("connected_sessions", connectedSessions).Msg("disabling scale-to-zero")
+		if err := m.ctrl.Disable(context.Background()); err != nil {
+			m.logger.Error().Err(err).Msg("failed to disable scale-to-zero")
+			return
+		}
+	} else {
+		m.logger.Info().Msg("enabling scale-to-zero")
+		if err := m.ctrl.Enable(context.Background()); err != nil {
+			m.logger.Error().Err(err).Msg("failed to enable scale-to-zero")
+			return
+		}
+	}
+
+	m.disabledScaleToZero = hasConnectedSessions
 }
