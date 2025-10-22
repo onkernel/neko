@@ -143,6 +143,9 @@ func (manager *StreamSinkManagerCtx) ID() string {
 }
 
 func (manager *StreamSinkManagerCtx) Bitrate() uint64 {
+	manager.listenersMu.Lock()
+	defer manager.listenersMu.Unlock()
+
 	return manager.bitrate
 }
 
@@ -151,7 +154,7 @@ func (manager *StreamSinkManagerCtx) Codec() codec.RTPCodec {
 }
 
 func (manager *StreamSinkManagerCtx) start() error {
-	if len(manager.listeners)+len(manager.listenersKf) == 0 {
+	if manager.ListenersCount() == 0 {
 		err := manager.CreatePipeline()
 		if err != nil && !errors.Is(err, types.ErrCapturePipelineAlreadyExists) {
 			return err
@@ -164,7 +167,7 @@ func (manager *StreamSinkManagerCtx) start() error {
 }
 
 func (manager *StreamSinkManagerCtx) stop() {
-	if len(manager.listeners)+len(manager.listenersKf) == 0 {
+	if manager.ListenersCount() == 0 {
 		manager.DestroyPipeline()
 		manager.logger.Info().Msgf("last listener, stopping")
 	}
@@ -408,6 +411,8 @@ func (manager *StreamSinkManagerCtx) DestroyPipeline() {
 
 	manager.pipelinesActive.Set(0)
 
+	manager.listenersMu.Lock()
+	defer manager.listenersMu.Unlock()
 	manager.brBuckets = make(map[int]float64)
 	manager.bitrate = 0
 }
