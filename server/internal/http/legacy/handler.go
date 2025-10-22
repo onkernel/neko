@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/m1k1o/neko/server/internal/api"
@@ -44,6 +45,7 @@ type LegacyHandler struct {
 	bannedIPs  map[string]struct{}
 	sessionIPs map[string]string
 	wsDialer   *websocket.Dialer
+	mu         sync.Mutex
 }
 
 func New(serverAddr string) *LegacyHandler {
@@ -393,6 +395,8 @@ func (h *LegacyHandler) Route(r types.Router) {
 
 func (h *LegacyHandler) ban(sessionId string) error {
 	// find session by id
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	ip, ok := h.sessionIPs[sessionId]
 	if !ok {
 		return fmt.Errorf("session not found")
@@ -404,6 +408,9 @@ func (h *LegacyHandler) ban(sessionId string) error {
 
 func (h *LegacyHandler) isBanned(r *http.Request) bool {
 	ip := getIp(r)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	_, ok := h.bannedIPs[ip]
 	return ok
 }

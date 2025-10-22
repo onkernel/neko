@@ -181,6 +181,8 @@ func (s *session) create(username, password string) error {
 	}
 
 	s.id, s.ip = data.ID, getIp(s.r)
+	s.h.mu.Lock()
+	defer s.h.mu.Unlock()
 	s.h.sessionIPs[s.id] = s.ip // save session ip by id
 	s.token = data.Token
 	s.name = data.Profile.Name
@@ -204,5 +206,7 @@ func (s *session) destroy() {
 	}
 
 	// remove session id from ip map
+	s.h.mu.Lock()
+	defer s.h.mu.Unlock()
 	delete(s.h.sessionIPs, s.id)
 }
